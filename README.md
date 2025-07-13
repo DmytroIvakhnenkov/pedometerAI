@@ -1,0 +1,1 @@
+Custom-made pedometer app, hopefully AI will be integrated in the future (I am looking at you, Gemini)
