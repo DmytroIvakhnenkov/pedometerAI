@@ -46,10 +46,39 @@ class PedometerViewModel(application: Application) : AndroidViewModel(applicatio
             true
         }
     }
+
+    fun updatePermissionState(granted: Boolean) {
+        _hasPermission.value = granted
+        if (granted) {
+            startStepCounting()
+        } else {
+            stopStepCounting()
+        }
+    }
     fun startStepCounting(){
         if (stepCounterSensor != null && checkPermission()) {
+            Log.d("PedometerViewModel", "Registering step counter listener.")
 
+            initialSteps = -1L
+            stepsSinceLastReset = 0L
+            _todaySteps.value = 0L
+
+            sensorManager.registerListener(
+                this,
+                stepCounterSensor,
+                SensorManager.SENSOR_DELAY_UI
+            )
+        } else if (!checkPermission()) {
+        Log.w("PedometerViewModel", "Cannot start step counting: Permission not granted.")
+        } else {
+            Log.w("PedometerViewModel", "Cannot start step counting: Sensor not available.")
         }
+
+    }
+
+    fun stopStepCounting(){
+        Log.d("PedometerViewModel", "Unregistering step counter listener.")
+        sensorManager.unregisterListener(this)
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
@@ -75,6 +104,11 @@ class PedometerViewModel(application: Application) : AndroidViewModel(applicatio
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
         Log.d("PedometerViewModel", "Sensor accuracy changed: $accuracy")
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stopStepCounting()
     }
 
 }
