@@ -29,7 +29,7 @@ class PedometerViewModel(application: Application) : AndroidViewModel(applicatio
     val hasPermission: StateFlow<Boolean> = _hasPermission
 
     init {
-        stepCounterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR)
+        stepCounterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
         if (stepCounterSensor == null) {
             Log.e("PedometerViewModel", "Step counter sensor not available!")
         }
@@ -82,9 +82,10 @@ class PedometerViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
+        Log.d("PedometerVM_Sensor", "onSensorChanged called. Event Sensor Type: ${event?.sensor?.type}, Value0: ${event?.values?.getOrNull(0)}")
         // logic to handle step data
         event?.let{
-            if(it.sensor.type == Sensor.TYPE_STEP_DETECTOR){
+            if(it.sensor.type == Sensor.TYPE_STEP_COUNTER){
                 val totalStepsFromSensor = it.values[0].toLong()
                 Log.d("PedometerViewModel", "Total steps from sensor: $totalStepsFromSensor")
                 if(initialSteps == -1L)
