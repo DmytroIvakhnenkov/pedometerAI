@@ -92,6 +92,8 @@ fun PedometerScreen(modifier: Modifier = Modifier,viewModel: PedometerViewModel)
 
         }
         lifecycleOwner.lifecycle.addObserver(observer)
+
+
     }
     Column(
         modifier = modifier

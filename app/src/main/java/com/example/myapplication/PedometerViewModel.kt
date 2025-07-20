@@ -15,6 +15,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import com.example.myapplication.DailySteps
 
 class PedometerViewModel(application: Application) : AndroidViewModel(application), SensorEventListener {
     private val _context = application.applicationContext
