@@ -57,43 +57,29 @@ fun PedometerScreen(modifier: Modifier = Modifier,viewModel: PedometerViewModel)
     val todaySteps by viewModel.todaySteps.collectAsState()
     val hasPermission by viewModel.hasPermission.collectAsState()
 
+    // get the onActivityResultLauncher
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
-        onResult = { isGranted ->
-            viewModel.updatePermissionState(isGranted)
-            if (isGranted) {
-                viewModel.startStepCounting()
-            }
-        }
-    )
+        onResult = { isGranted -> viewModel.updatePermissionState(isGranted)  })
 
+    // get the lifecycle owner
+    // key1 is to enter the UI when it first composes
+    // LaunchedEffect adds a new observer to the lifecycle
     val lifecycleOwner = LocalLifecycleOwner.current
     LaunchedEffect(key1 = lifecycleOwner, key2 = hasPermission) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_START -> {
-                    if (hasPermission) {
-                        viewModel.startStepCounting()
-                    } else {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                            permissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
-                        } else {
-                            viewModel.updatePermissionState(true)
-                        }
-                    }
+                    if (hasPermission) {viewModel.startStepCounting()}
+                    else {permissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)}
                 }
-
                 Lifecycle.Event.ON_STOP -> {
                     viewModel.stopStepCounting()
                 }
-
                 else -> {}
             }
-
         }
         lifecycleOwner.lifecycle.addObserver(observer)
-
-
     }
     Column(
         modifier = modifier
@@ -103,36 +89,23 @@ fun PedometerScreen(modifier: Modifier = Modifier,viewModel: PedometerViewModel)
         verticalArrangement = Arrangement.Center // Center children vertically
     )
     {
-        Text(
-            text = "Steps Today",
+        Text(text = "Steps Today",
             fontSize = 24.sp,
-            style = MaterialTheme.typography.headlineSmall,
-        )
+            style = MaterialTheme.typography.headlineSmall)
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Text(
-            text = todaySteps.toString(),
+        Text(text = todaySteps.toString(),
             fontSize = 48.sp,
             style = MaterialTheme.typography.displayLarge,
-            color = MaterialTheme.colorScheme.primary
-        )
+            color = MaterialTheme.colorScheme.primary)
 
-        if (!hasPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            Button(onClick = {
-                permissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
-            }) {
-                Text("Request Activity Permission")
-            }
-            Text(
-                "Activity recognition permission is needed to count steps.",
-                modifier = Modifier.padding(top = 8.dp)
-            )
-        } else if (hasPermission) {
-            Text("Step sensor active.")
-        } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            Text("Step sensor should be active (older Android version).")
-        }
+        if (!hasPermission) {
+            Button(onClick = {permissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)})
+            {Text("Request Activity Permission")}
+            Text("Activity recognition permission is needed to count steps.",
+                modifier = Modifier.padding(top = 8.dp))}
+        else {Text("Step sensor active.")}
     }
 }
 
