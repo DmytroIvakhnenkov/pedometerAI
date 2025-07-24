@@ -2,6 +2,9 @@ package com.example.myapplication
 
 import android.Manifest
 import android.app.Application
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -35,6 +38,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.myapplication.ui.theme.MyApplicationTheme
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        const val STEP_COUNT_CHANNEL_ID = "step_count_channel"
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -49,18 +55,34 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+        createNotificationChannel()
+    }
+
+    private fun createNotificationChannel() {
+        val name = "Step Counter"
+        val descriptionText = "Displays current step count"
+        val importance = NotificationManager.IMPORTANCE_LOW
+        val channel = NotificationChannel(STEP_COUNT_CHANNEL_ID, name, importance).apply {
+            description = descriptionText
+        }
+        val notificationManager: NotificationManager =
+            getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.createNotificationChannel(channel)
+
     }
 }
+
+
 
 @Composable
 fun PedometerScreen(modifier: Modifier = Modifier,viewModel: PedometerViewModel) {
     val todaySteps by viewModel.todaySteps.collectAsState()
-    val hasPermission by viewModel.hasPermission.collectAsState()
+    val hasPermission by viewModel.hasActivityRecognitionPermission.collectAsState()
 
     // get the onActivityResultLauncher
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
-        onResult = { isGranted -> viewModel.updatePermissionState(isGranted)  })
+        onResult = { isGranted -> viewModel.updateActivityRecognitionPermissionState(isGranted)  })
 
     // get the lifecycle owner
     // key1 is to enter the UI when it first composes

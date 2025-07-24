@@ -1,132 +1,125 @@
 package com.example.myapplication
 
+import android.annotation.SuppressLint
 import android.app.Application
+import android.app.NotificationManager
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.IBinder
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.text.SimpleDateFormat
 import androidx.core.content.edit
+import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
 
-class PedometerViewModel(application: Application) : AndroidViewModel(application), SensorEventListener {
 
-    private val sharedPreferences: SharedPreferences = application.getSharedPreferences("PedometerPrefs", Context.MODE_PRIVATE)
+const val STEP_COUNT_NOTIFICATION_ID = 1
 
-    private var lastKnownDateString: String = ""
+class PedometerViewModel(application: Application) : AndroidViewModel(application) {
 
+    @SuppressLint("StaticFieldLeak") // I am getting the MainActivity context from the application context
     private val _context = application.applicationContext
-    private var totalStepsFromSensorSinceBoot = -1L
-    private var stepCounterSensor: Sensor? = null
-    private var sensorManager: SensorManager = _context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
 
-    private val _todaySteps = MutableStateFlow(0L)
-    val todaySteps: StateFlow<Long> = _todaySteps
+    private val _uiTodaySteps = MutableStateFlow(0L)
+    val uiTodaySteps: StateFlow<Long> = _uiTodaySteps.asStateFlow()
 
-    private val _hasPermission = MutableStateFlow(checkPermission())
-    val hasPermission: StateFlow<Boolean> = _hasPermission
+    private val _isServiceBound = MutableStateFlow(false)
+    val isServiceBound: StateFlow<Boolean> = _isServiceBound.asStateFlow()
 
+    @SuppressLint("StaticFieldLeak")
+    private var pedometerService: PedometerService? = null
+    private var bound = false
+
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val binder = service as PedometerService.LocalBinder
+            pedometerService = binder.getService()
+            bound = true
+            _isServiceBound.value = true
+        }
+
+        override fun onServiceDisconnected(arg0: ComponentName) {
+            bound = false
+            pedometerService = null
+            _isServiceBound.value = false
+            Log.d("PedometerViewModel", "Service disconnected")
+        }
+    }
+
+    private val _hasActivityRecognitionPermission = MutableStateFlow(checkActivityRecognitionPermission())
+    val hasActivityRecognitionPermission: StateFlow<Boolean> = _hasActivityRecognitionPermission.asStateFlow()
     init {
-        stepCounterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
-        if (stepCounterSensor == null) {
-            Log.e("PedometerViewModel", "Step counter sensor not available!")
-        }
-        _hasPermission.value = checkPermission()
-        loadPersistentData()
+        checkAndStartPedometerService()
     }
 
-    // check the permission to count
-    private fun checkPermission(): Boolean {
+    fun checkAndStartPedometerService(){
+        if (checkActivityRecognitionPermission())
+        {
+            _hasActivityRecognitionPermission.value = true
+            Intent(_context, PedometerService::class.java).also { intent ->
+                _context.startForegroundService(intent) }
+            bindToService()
+            }
+        else {
+            _hasActivityRecognitionPermission.value = false
+            Log.d("PedometerViewModel", "Activity recognition permission not granted.")
+        }
+    }
+
+    private fun checkActivityRecognitionPermission(): Boolean {
         return ContextCompat.checkSelfPermission(
-                _context,
-                android.Manifest.permission.ACTIVITY_RECOGNITION
-            ) == PackageManager.PERMISSION_GRANTED}
-
-    // expose the permission state to the composable (it will get updated by the activityLauncher)
-    fun updatePermissionState(granted: Boolean) {
-        _hasPermission.value = granted
-        if (granted) {startStepCounting()}
-        else {stopStepCounting()}
+            _context,
+            android.Manifest.permission.ACTIVITY_RECOGNITION
+        ) == PackageManager.PERMISSION_GRANTED
     }
 
-    private fun getCurrentDateString(): String {
-        return dateFormat.format(java.util.Date())
-    }
-
-    private fun loadPersistentData() {
-        lastKnownDateString = sharedPreferences.getString("lastKnownDateString", getCurrentDateString()) ?: getCurrentDateString()
-
-        if (lastKnownDateString != getCurrentDateString()) {
-            Log.d("PedometerViewModel", "New day detected on load. Previous date: $lastKnownDateString")
-            lastKnownDateString = getCurrentDateString()
-            sharedPreferences.edit {
-                putString("lastKnownDateString", lastKnownDateString)
-            }
-        }
-    }
-    // start  providing events to OnSensorChanged
-    fun startStepCounting(){
-        if (stepCounterSensor != null && checkPermission()) {
-            Log.d("PedometerViewModel", "Registering step counter listener.")
-            totalStepsFromSensorSinceBoot = -1L
-            _todaySteps.value = 0L
-            sensorManager.registerListener(
-                this, // 'this' refers to the PedometerViewModel instance, which is a SensorEventListener
-                stepCounterSensor,
-                SensorManager.SENSOR_DELAY_UI)
-        }
-        else if (!checkPermission()) {Log.w("PedometerViewModel", "Cannot start step counting: Permission not granted.")}
-        else {Log.w("PedometerViewModel", "Cannot start step counting: Sensor not available.")}
-    }
-
-    fun stopStepCounting(){
-        Log.d("PedometerViewModel", "Unregistering step counter listener.")
-        sensorManager.unregisterListener(this)
-    }
-
-    // part of SensorEventListener, works because I have registered a listener in startStepCounting()
-    override fun onSensorChanged(event: SensorEvent?) {
-        Log.d("PedometerVM_Sensor", "onSensorChanged called. Event Sensor Type: ${event?.sensor?.type}, Value0: ${event?.values?.getOrNull(0)}")
-        event?.let{
-            if(it.sensor.type == Sensor.TYPE_STEP_COUNTER){
-                val totalStepsFromSensor = it.values[0].toLong()
-                Log.d("PedometerViewModel", "Total steps from sensor: $totalStepsFromSensor")
-                val currentDateString = getCurrentDateString()
-                if(totalStepsFromSensorSinceBoot == -1L) {
-                    totalStepsFromSensorSinceBoot = totalStepsFromSensor
-                    Log.d("PedometerViewModel", "Initial steps set to: $totalStepsFromSensorSinceBoot")
-                }
-                // resets todaySteps if it's a new day
-                if (currentDateString != lastKnownDateString) {
-                    Log.d("PedometerViewModel", "New day detected. Previous date: $lastKnownDateString")
-                    lastKnownDateString = currentDateString
-                    sharedPreferences.edit {
-                        putString("lastKnownDateString", lastKnownDateString)
-                    }
-                    _todaySteps.value = 0
-                }
-                _todaySteps.value += totalStepsFromSensor - totalStepsFromSensorSinceBoot
-                totalStepsFromSensorSinceBoot = totalStepsFromSensor
+    fun bindToService() {
+        if (!bound) {
+            Intent(_context, PedometerService::class.java).also { intent ->
+                _context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
             }
         }
     }
 
-    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-        Log.d("PedometerViewModel", "Sensor accuracy changed: $accuracy")
+    fun unbindFromService() {
+        if (bound) {
+            _context.unbindService(serviceConnection)
+            pedometerService = null // **CRUCIAL: Clear the reference here**
+            bound = false
+            _isServiceBound.value = false
+            Log.d("PedometerViewModel", "Service unbound and reference cleared.")
+        }
+    }
+
+    fun updateActivityRecognitionPermissionState(granted: Boolean) {
+        _hasActivityRecognitionPermission.value = granted
+        if (granted) {
+            checkAndStartPedometerService()
+        } else {
+            // Optionally stop service if permission is revoked while running,
+            // though the service itself should also handle this.
+            // stopPedometerService()
+        }
     }
 
     override fun onCleared() {
         super.onCleared()
-        stopStepCounting()
+        unbindFromService()
     }
+
+
 
 }
