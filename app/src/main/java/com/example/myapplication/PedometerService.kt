@@ -51,6 +51,7 @@ class PedometerService : Service(), SensorEventListener {
 
     override fun onCreate() {
         super.onCreate()
+        Log.d("PedometerService", "onCreate called")
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         stepCounterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
         sharedPreferences = getSharedPreferences("PedometerPrefs", Context.MODE_PRIVATE)
@@ -65,6 +66,8 @@ class PedometerService : Service(), SensorEventListener {
         startStepCounting()
     }
 
+    // permission management is handled in startStepCounting, which is executed in onCreate
+    // but maybe I need to add permission checking here as well
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d("PedometerService", "onStartCommand called")
         createNotificationChannel()
@@ -73,6 +76,7 @@ class PedometerService : Service(), SensorEventListener {
 
         return START_STICKY
     }
+
 
     private fun getCurrentDateString(): String {
         return SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
@@ -136,7 +140,7 @@ class PedometerService : Service(), SensorEventListener {
         event?.let{
             if(it.sensor.type == Sensor.TYPE_STEP_COUNTER){
                 val rawStepsFromSensor = it.values[0].toLong()
-                Log.d("PedometerViewModel", "Total steps from sensor: $rawStepsFromSensor")
+                Log.d("PedometerViewModel", "Raw steps from sensor: $rawStepsFromSensor")
                 // either first time or device has been rebooted
                 if(totalStepsFromSensorSinceBoot == -1L) {
                     totalStepsFromSensorSinceBoot = rawStepsFromSensor
