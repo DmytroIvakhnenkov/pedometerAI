@@ -94,9 +94,15 @@ class PedometerViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun bindToService() {
         if (!bound) {
+            Log.d("PedometerViewModel", "Attempting to bind to service. Current bound state: $bound") // ADD THIS LOG
             Intent(_context, PedometerService::class.java).also { intent ->
-                _context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+                Log.d("PedometerViewModel", "Binding with intent: $intent") // ADD THIS LOG
+                val wasBound = _context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+                Log.d("PedometerViewModel", "bindService call returned: $wasBound") // ADD THIS LOG
             }
+        }
+        else {
+            Log.d("PedometerViewModel", "Service already considered bound, not calling bindService again.") // ADD THIS LOG
         }
     }
 

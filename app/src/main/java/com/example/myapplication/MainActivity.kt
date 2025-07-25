@@ -2,6 +2,7 @@ package com.example.myapplication
 
 import android.Manifest
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -50,69 +51,72 @@ class MainActivity : ComponentActivity() {
         }
 
     }
+}
 
 
-    @Composable
-    fun PedometerScreen(modifier: Modifier = Modifier, viewModel: PedometerViewModel) {
-        val todaySteps by viewModel.uiTodaySteps.collectAsState()
-        val hasPermission by viewModel.hasActivityRecognitionPermission.collectAsState()
+@Composable
+fun PedometerScreen(modifier: Modifier = Modifier, viewModel: PedometerViewModel) {
+    val todaySteps by viewModel.uiTodaySteps.collectAsState()
+    val hasPermission by viewModel.hasActivityRecognitionPermission.collectAsState()
 
-        // get the onActivityResultLauncher
-        val permissionLauncher = rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.RequestPermission(),
-            onResult = { isGranted -> viewModel.updateActivityRecognitionPermissionState(isGranted) })
-
-        // get the lifecycle owner
-        // key1 is to enter the UI when it first composes
-        // LaunchedEffect adds a new observer to the lifecycle
-        LaunchedEffect(key1 = Unit) { // Use Unit to run once on initial composition
-            if (!hasPermission) {
-                permissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
-            }
-        }
-        Column(
-            modifier = modifier
-                .fillMaxSize() // Make the Column take the whole screen
-                .padding(16.dp), // Add some padding around the content
-            horizontalAlignment = Alignment.CenterHorizontally, // Center children horizontally
-            verticalArrangement = Arrangement.Center // Center children vertically
-        )
-        {
-            Text(
-                text = "Steps Today",
-                fontSize = 24.sp,
-                style = MaterialTheme.typography.headlineSmall
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = todaySteps.toString(),
-                fontSize = 48.sp,
-                style = MaterialTheme.typography.displayLarge,
-                color = MaterialTheme.colorScheme.primary
-            )
-
-            if (!hasPermission) {
-                Button(onClick = { permissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION) })
-                { Text("Request Activity Permission") }
-                Text(
-                    "Activity recognition permission is needed to count steps.",
-                    modifier = Modifier.padding(top = 8.dp)
-                )
+    // get the onActivityResultLauncher
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { isGranted ->
+            viewModel.updateActivityRecognitionPermissionState(isGranted)
+            if (isGranted) {
+                viewModel.checkAndStartPedometerService()
+                Log.d("PedometerScreen", "Activity Recognition permission granted. Starting service.")
             } else {
-                Text("Step sensor active.")
-            }
+                Log.d("PedometerScreen", "Activity Recognition permission denied.")
+            }})
+
+    // get the lifecycle owner
+    // key1 is to enter the UI when it first composes
+    // LaunchedEffect adds a new observer to the lifecycle
+    LaunchedEffect(key1 = Unit) { // Use Unit to run once on initial composition
+        if (!hasPermission) {
+            permissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+            Log.d("PedometerScreen", "Getting permission.")
+
+        }
+        else{
+            viewModel.checkAndStartPedometerService()
+            Log.d("PedometerScreen", "Permission already granted. Starting ViewModel.")
         }
     }
+    Column(
+        modifier = modifier
+            .fillMaxSize() // Make the Column take the whole screen
+            .padding(16.dp), // Add some padding around the content
+        horizontalAlignment = Alignment.CenterHorizontally, // Center children horizontally
+        verticalArrangement = Arrangement.Center // Center children vertically
+    )
+    {
+        Text(
+            text = "Steps Today",
+            fontSize = 24.sp,
+            style = MaterialTheme.typography.headlineSmall
+        )
 
-    @Preview(showBackground = true)
-    @Composable
-    fun PedometerScreenPreview() {
-        MyApplicationTheme {
-            val pedometerViewModel: PedometerViewModel = viewModel()
-            PedometerScreen(viewModel = pedometerViewModel)
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = todaySteps.toString(),
+            fontSize = 48.sp,
+            style = MaterialTheme.typography.displayLarge,
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        if (!hasPermission) {
+            Button(onClick = { permissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION) })
+            { Text("Request Activity Permission") }
+            Text(
+                "Activity recognition permission is needed to count steps.",
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        } else {
+            Text("Step sensor active.")
         }
     }
-
 }
