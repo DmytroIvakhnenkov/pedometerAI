@@ -22,8 +22,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.text.SimpleDateFormat
 import androidx.core.content.edit
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
 
 
 const val STEP_COUNT_NOTIFICATION_ID = 1
@@ -49,6 +52,12 @@ class PedometerViewModel(application: Application) : AndroidViewModel(applicatio
             pedometerService = binder.getService()
             bound = true
             _isServiceBound.value = true
+
+            viewModelScope.launch {
+                pedometerService?.serviceSteps?.collect { stepsFromService ->
+                    _uiTodaySteps.value = stepsFromService
+                }
+            }
         }
 
         override fun onServiceDisconnected(arg0: ComponentName) {
@@ -61,9 +70,6 @@ class PedometerViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val _hasActivityRecognitionPermission = MutableStateFlow(checkActivityRecognitionPermission())
     val hasActivityRecognitionPermission: StateFlow<Boolean> = _hasActivityRecognitionPermission.asStateFlow()
-    init {
-        checkAndStartPedometerService()
-    }
 
     fun checkAndStartPedometerService(){
         if (checkActivityRecognitionPermission())
