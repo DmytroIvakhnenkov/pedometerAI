@@ -4,6 +4,9 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+configurations.all {
+    exclude(group = "com.intellij", module = "annotations")
+}
 android {
     namespace = "com.example.myapplication"
     compileSdk = 36

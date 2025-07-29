@@ -31,5 +31,4 @@ interface StepDataDao {
     fun getTotalSteps(): Flow<Long>
 
 
-
 }
