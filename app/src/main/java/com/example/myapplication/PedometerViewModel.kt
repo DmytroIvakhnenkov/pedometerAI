@@ -26,7 +26,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.util.Calendar
+import java.util.Date
 
 
 const val STEP_COUNT_NOTIFICATION_ID = 1
@@ -42,6 +45,14 @@ class PedometerViewModel(application: Application) : AndroidViewModel(applicatio
     private val _isServiceBound = MutableStateFlow(false)
     val isServiceBound: StateFlow<Boolean> = _isServiceBound.asStateFlow()
 
+    private val _lastSevenDaysSteps = MutableStateFlow<List<StepData>>(emptyList())
+    val lastSevenDaysSteps: StateFlow<List<StepData>> = _lastSevenDaysSteps.asStateFlow()
+
+    private val database by lazy {
+        AppDatabase.getDatabase(application)}
+    private val stepDataDao by lazy {
+        database.stepDataDao()}
+
     @SuppressLint("StaticFieldLeak")
     private var pedometerService: PedometerService? = null
     private var bound = false
@@ -56,6 +67,7 @@ class PedometerViewModel(application: Application) : AndroidViewModel(applicatio
             viewModelScope.launch {
                 pedometerService?.serviceSteps?.collect { stepsFromService ->
                     _uiTodaySteps.value = stepsFromService
+                    fetchLastSevenDaysSteps()
                 }
             }
         }
@@ -124,6 +136,59 @@ class PedometerViewModel(application: Application) : AndroidViewModel(applicatio
             // Optionally stop service if permission is revoked while running,
             // though the service itself should also handle this.
             // stopPedometerService()
+        }
+    }
+
+    fun fetchLastSevenDaysSteps(){
+        viewModelScope.launch {
+
+            val dates = mutableListOf<String>()
+            val dateLabels = mutableListOf<String>()
+            val dayFormatter = SimpleDateFormat("EEE", Locale.getDefault())
+            val dbDateFormatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+
+            val targetDate = Calendar.getInstance()
+            targetDate.add(Calendar.DATE, -1)
+            var todayDateString = dbDateFormatter.format(targetDate.time)
+            stepDataDao.insertOrUpdateSteps(StepData(todayDateString, 57))
+            targetDate.add(Calendar.DATE, -2)
+            todayDateString = dbDateFormatter.format(targetDate.time)
+            stepDataDao.insertOrUpdateSteps(StepData(todayDateString, 67))
+
+            for (i in 0..6) {
+                val targetDate = Calendar.getInstance()
+                targetDate.add(Calendar.DATE, -i)
+                dates.add(dbDateFormatter.format(targetDate.time))
+                dateLabels.add(dayFormatter.format(targetDate.time))
+            }
+            dates.reverse()
+            dateLabels.reverse()
+
+            Log.d("PedometerViewModel", "Fetching steps for dates: $dates")
+            //Fetch from Room
+            stepDataDao.getStepsForDates(dates).first().let { stepFromDb ->
+                val stepsMap = stepFromDb.associateBy { steps -> steps.date}
+                val chartDataList = mutableListOf<StepData>()
+
+                val todayDateString = dbDateFormatter.format(Date())
+
+                for (i in dates.indices){
+                    val dateStr = dates[i]
+                    val label = dateLabels[i]
+                    val stepsForDay: Long
+
+                    if (dateStr == todayDateString){
+                        stepsForDay = _uiTodaySteps.value
+                    }
+                    else {
+                        stepsForDay = stepsMap[dateStr]?.steps ?: 0L
+                    }
+                    chartDataList.add(StepData(label, stepsForDay))
+                }
+                _lastSevenDaysSteps.value = chartDataList
+                Log.d("PedometerViewModel", "Chart data: $chartDataList")
+
+            }
         }
     }
 

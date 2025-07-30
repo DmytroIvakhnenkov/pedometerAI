@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
@@ -56,7 +57,8 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun PedometerScreen(modifier: Modifier = Modifier, viewModel: PedometerViewModel) {
-    val todaySteps by viewModel.uiTodaySteps.collectAsState()
+    val todaySteps by viewModel.uiTodaySteps.collectAsState() // collect as state uses RepeatOnLifecycle under the hood
+    val lastSevenDaysSteps by viewModel.lastSevenDaysSteps.collectAsState()
     val hasPermission by viewModel.hasActivityRecognitionPermission.collectAsState()
 
     // get the onActivityResultLauncher
@@ -107,6 +109,18 @@ fun PedometerScreen(modifier: Modifier = Modifier, viewModel: PedometerViewModel
             style = MaterialTheme.typography.displayLarge,
             color = MaterialTheme.colorScheme.primary
         )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        if (lastSevenDaysSteps.isNotEmpty()) {
+            StepBarGraph(
+                chartDataList = lastSevenDaysSteps,
+                modifier = Modifier.fillMaxWidth()
+                // You can customize barColor, labelColor, etc. here
+            )
+        } else {
+            Text("Loading graph data or no data available for the last 7 days...")
+        }
 
         if (!hasPermission) {
             Button(onClick = { permissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION) })

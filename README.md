@@ -10,5 +10,6 @@ Key Concepts Used:
 5. Sensor Class Implementation.
 6. SharedPreferences.
 7. Binding & Intents (service-specific) 
-8. RepeatOnLifecycle? 
+8. RepeatOnLifecycle
 9. Broadcast Receivers.
+10. Room, DAO.

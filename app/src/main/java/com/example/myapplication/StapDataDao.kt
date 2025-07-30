@@ -30,5 +30,8 @@ interface StepDataDao {
     @Query("SELECT SUM(steps) FROM daily_steps")
     fun getTotalSteps(): Flow<Long>
 
+    @Query("SELECT * FROM daily_steps WHERE date IN (:dates)")
+    fun getStepsForDates(dates: List<String>): Flow<List<StepData>>
+
 
 }
