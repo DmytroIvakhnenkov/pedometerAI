@@ -21,9 +21,13 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import com.example.myapplication.MainActivity.Companion.STEP_COUNT_CHANNEL_ID
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -35,6 +39,17 @@ class PedometerService : Service(), SensorEventListener {
     private var currentDaySteps = 0L
     private lateinit var sharedPreferences: SharedPreferences
     private lateinit var lastKnownDateString: String
+
+    //For Room Database
+    private val appDatabase by lazy {
+        AppDatabase.getDatabase(this)
+    }
+    private val stepDataDao by lazy {
+        appDatabase.stepDataDao()
+    }
+    private val serviceJob = SupervisorJob()
+    private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
+    //
 
     private val notificationManager by lazy {
         getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -49,13 +64,16 @@ class PedometerService : Service(), SensorEventListener {
     private val _serviceSteps = MutableStateFlow(0L)
     val serviceSteps: StateFlow<Long> = _serviceSteps.asStateFlow()
 
+    // TASKS:
+    // handle if the user turns off the app for a couple of days
+    // database has to be filled for those days
     override fun onCreate() {
         super.onCreate()
         Log.d("PedometerService", "onCreate called")
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         stepCounterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
         sharedPreferences = getSharedPreferences("PedometerPrefs", Context.MODE_PRIVATE)
-        loadPersistentData()
+        loadInitialData()
 
         if (stepCounterSensor == null)
         {
@@ -82,18 +100,11 @@ class PedometerService : Service(), SensorEventListener {
         return SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
     }
 
-    private fun loadPersistentData() {
+    private fun loadInitialData() {
         lastKnownDateString = sharedPreferences.getString("lastKnownDateString", getCurrentDateString()) ?: getCurrentDateString()
-
-        if (lastKnownDateString != getCurrentDateString()) {
-            Log.d("PedometerViewModel", "New day detected on load. Previous date: $lastKnownDateString")
-            lastKnownDateString = getCurrentDateString()
-            sharedPreferences.edit {
-                putString("lastKnownDateString", lastKnownDateString)
-            }
-        }
+        currentDaySteps = sharedPreferences.getLong("steps_$lastKnownDateString", 0L)
     }
-    // start  providing events to OnSensorChanged
+    // start providing events to OnSensorChanged
     fun startStepCounting(){
         if (stepCounterSensor != null &&
             ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED) {
@@ -134,31 +145,37 @@ class PedometerService : Service(), SensorEventListener {
             .build()
     }
 
+
     // part of SensorEventListener, works because I have registered a listener in startStepCounting()
     override fun onSensorChanged(event: SensorEvent?) {
         Log.d("PedometerVM_Sensor", "onSensorChanged called. Event Sensor Type: ${event?.sensor?.type}, Value0: ${event?.values?.getOrNull(0)}")
         event?.let{
             if(it.sensor.type == Sensor.TYPE_STEP_COUNTER){
+
+                // get steps from hardware pedometer
                 val rawStepsFromSensor = it.values[0].toLong()
                 Log.d("PedometerViewModel", "Raw steps from sensor: $rawStepsFromSensor")
+
                 // either first time or device has been rebooted
                 if(totalStepsFromSensorSinceBoot == -1L) {
                     totalStepsFromSensorSinceBoot = rawStepsFromSensor
-                    loadPersistedData()
                     Log.d("PedometerViewModel", "Initial steps set to: $totalStepsFromSensorSinceBoot")
                 }
+
+
                 // resets todaySteps if it's a new day
                 val currentDateString = getCurrentDateString()
                 if (currentDateString != lastKnownDateString) {
                     Log.d("PedometerViewModel", "New day detected. Previous date: $lastKnownDateString")
-                    persistSteps(lastKnownDateString, currentDaySteps)
+                    saveStepsToRoom(lastKnownDateString, currentDaySteps)
                     currentDaySteps = 0L
                     lastKnownDateString = currentDateString
                     sharedPreferences.edit {
                         putString("lastKnownDateString", lastKnownDateString)
-                        putLong("steps_$currentDateString", currentDaySteps)
                     }
                 }
+
+                // get delta
                 val newStepsThisEvent = if (rawStepsFromSensor >= totalStepsFromSensorSinceBoot){
                     rawStepsFromSensor - totalStepsFromSensorSinceBoot
                 } else {
@@ -166,13 +183,15 @@ class PedometerService : Service(), SensorEventListener {
                     rawStepsFromSensor
                 }
 
+                // update the values
                 currentDaySteps += newStepsThisEvent
                 totalStepsFromSensorSinceBoot = rawStepsFromSensor
 
                 _serviceSteps.value  = currentDaySteps
                 updateNotification(currentDaySteps)
-                persistSteps(lastKnownDateString, currentDaySteps)
-
+                sharedPreferences.edit {
+                    putLong("steps_$currentDateString", currentDaySteps)
+                }
                 Log.d("PedometerViewModel", "Updated currentDaySteps.")
             }
         }
@@ -182,18 +201,17 @@ class PedometerService : Service(), SensorEventListener {
         notificationManager.notify(STEP_COUNT_NOTIFICATION_ID, notification)
     }
 
-    private fun persistSteps(dateString: String, steps: Long) {
-        sharedPreferences.edit {
-            putLong("steps_$dateString", steps)
-            putString("lastKnownDateString", dateString)
-            apply()
+    private fun saveStepsToRoom(dateString: String, steps: Long) {
+        serviceScope.launch{
+            try {
+                val dailyStepsEntry = StepData(date = dateString, steps = steps)
+                stepDataDao.insertOrUpdateSteps(dailyStepsEntry)
+                Log.i("Pedometer Service", "Saved steps to Room: $steps")
+            }
+            catch (e: Exception){
+                Log.e("Pedometer Service", "Error saving steps to Room: ${e.message}")
+            }
         }
-    }
-
-    private fun loadPersistedData(){
-        val todayString = getCurrentDateString()
-        lastKnownDateString = sharedPreferences.getString("lastKnownDateString", todayString) ?: todayString
-        currentDaySteps = sharedPreferences.getLong("steps_$lastKnownDateString", 0L)
     }
 
     private fun createNotificationChannel() {
@@ -227,7 +245,6 @@ class PedometerService : Service(), SensorEventListener {
     override fun onDestroy() {
         super.onDestroy()
         stopStepCounting()
-        persistSteps(lastKnownDateString, currentDaySteps)
         Log.d("{PedometerService", "onDestroy called")
     }
 
