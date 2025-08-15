@@ -13,3 +13,12 @@ Key Concepts Used:
 8. RepeatOnLifecycle
 9. Broadcast Receivers.
 10. Room, DAO.
+
+
+### Task List 
+
+1. [ ] Make sure the counter resets when day resets.
+2. [ ] Draw a beautiful graph for step count (search libraries online).
+3. [ ] Add weather integration. 
+4. [ ] Add Gemini. 
+5. [ ] Feed weather, time and user current steps to the Gemini.
